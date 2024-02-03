@@ -71,6 +71,16 @@ def refresh_plex():
         stream_item['state'] = child.attrib['state']
       if child.tag == 'Player' and 'remotePublicAddress' in child.attrib.keys():
         stream_item['ip'] = child.attrib['remotePublicAddress']
+      if child.tag == 'Player' and 'device' in child.attrib.keys():
+        stream_item['device'] = child.attrib['device']
+      if child.tag == 'Player' and 'platform' in child.attrib.keys():
+        stream_item['platform'] = child.attrib['platform']
+      if child.tag == 'Player' and 'platformVersion' in child.attrib.keys():
+        stream_item['platform_version'] = child.attrib['platformVersion']
+      if child.tag == 'Player' and 'product' in child.attrib.keys():
+        stream_item['product'] = child.attrib['product']
+      if child.tag == 'Director' and 'tag' in child.attrib.keys():
+        stream_item['director'] = child.attrib['tag']
     streams.append(stream_item)
 
   shrunk_report = ''
