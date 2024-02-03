@@ -81,6 +81,18 @@ def refresh_plex():
         stream_item['product'] = child.attrib['product']
       if child.tag == 'Director' and 'tag' in child.attrib.keys():
         stream_item['director'] = child.attrib['tag']
+      if child.tag == 'TranscodeSession' and 'progress' in child.attrib.keys():
+        stream_item['transcode_progress'] = child.attrib['progress']
+      if child.tag == 'TranscodeSession' and 'complete' in child.attrib.keys():
+        stream_item['transcode_complete'] = child.attrib['complete']
+      if child.tag == 'TranscodeSession' and 'throttled' in child.attrib.keys():
+        stream_item['transcode_throttled'] = child.attrib['throttled']
+      if child.tag == 'TranscodeSession' and 'videoDecision' in child.attrib.keys():
+        stream_item['transcode_video'] = child.attrib['videoDecision']
+      if child.tag == 'TranscodeSession' and 'audioDecision' in child.attrib.keys():
+        stream_item['transcode_audio'] = child.attrib['audioDecision']
+      if child.tag == 'TranscodeSession' and 'subtitleDecision' in child.attrib.keys():
+        stream_item['transcode_subtitle'] = child.attrib['subtitleDecision']
     streams.append(stream_item)
 
   shrunk_report = ''
