@@ -20,7 +20,7 @@ PLEX_SERVER_HOST     = 'http://localhost:32400'
 PLEX_API             = PLEX_SERVER_HOST + '/status/sessions'
 PLEX_TOKEN           = None
 PLEX_TOKEN           = getenv('plex_token')
-MAX_RIGHT_BAR_LENGTH = 80
+MAX_RIGHT_BAR_LENGTH = 75
 
 # Init
 docker = from_env()
