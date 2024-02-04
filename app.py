@@ -1,6 +1,7 @@
 # Imports
-from os import chdir, listdir, getenv
+from os import chdir, listdir
 from sys import stdout
+from time import sleep
 from subprocess import run, Popen, PIPE
 from xml.etree import ElementTree
 # end stdlib
@@ -12,15 +13,8 @@ from textual.containers import ScrollableContainer
 from textual.widgets import Button, Header, Footer, DataTable, Log, Static, Label
 from docker import from_env
 
-# Vars
-APP_NAME             = 'Docker TUI'
-DOCKER_COMPOSE       = True
-DOCKER_COMPOSE_PATH  = '/mnt/dump/docker'
-PLEX_SERVER_HOST     = 'http://localhost:32400'
-PLEX_API             = PLEX_SERVER_HOST + '/status/sessions'
-PLEX_TOKEN           = None
-PLEX_TOKEN           = getenv('plex_token')
-MAX_RIGHT_BAR_LENGTH = 75
+# Load config
+from config import *
 
 # Init
 docker = from_env()
@@ -36,10 +30,8 @@ def docker_ps():
     container_list.append(con_tuple)
   return container_list
 
-def refresh_plex():
+def refresh_plex(transcode_toggle):
   report = ''
-  report += '---\n'
-  report += 'Plex\n'
   headers = {'X-Plex-Token': PLEX_TOKEN}
   plex_sessions_xml = get(PLEX_API, headers=headers)
   xml_tree = ElementTree.fromstring(plex_sessions_xml.text)
@@ -81,18 +73,19 @@ def refresh_plex():
         stream_item['product'] = child.attrib['product']
       if child.tag == 'Director' and 'tag' in child.attrib.keys():
         stream_item['director'] = child.attrib['tag']
-      if child.tag == 'TranscodeSession' and 'progress' in child.attrib.keys():
-        stream_item['transcode_progress'] = child.attrib['progress']
-      if child.tag == 'TranscodeSession' and 'complete' in child.attrib.keys():
-        stream_item['transcode_complete'] = child.attrib['complete']
-      if child.tag == 'TranscodeSession' and 'throttled' in child.attrib.keys():
-        stream_item['transcode_throttled'] = child.attrib['throttled']
-      if child.tag == 'TranscodeSession' and 'videoDecision' in child.attrib.keys():
-        stream_item['transcode_video'] = child.attrib['videoDecision']
-      if child.tag == 'TranscodeSession' and 'audioDecision' in child.attrib.keys():
-        stream_item['transcode_audio'] = child.attrib['audioDecision']
-      if child.tag == 'TranscodeSession' and 'subtitleDecision' in child.attrib.keys():
-        stream_item['transcode_subtitle'] = child.attrib['subtitleDecision']
+      if transcode_toggle:
+        if child.tag == 'TranscodeSession' and 'progress' in child.attrib.keys():
+          stream_item['transcode_progress'] = float(child.attrib['progress']) // 1
+        if child.tag == 'TranscodeSession' and 'complete' in child.attrib.keys():
+          stream_item['transcode_complete'] = child.attrib['complete']
+        if child.tag == 'TranscodeSession' and 'throttled' in child.attrib.keys():
+          stream_item['transcode_throttled'] = child.attrib['throttled']
+        if child.tag == 'TranscodeSession' and 'videoDecision' in child.attrib.keys():
+          stream_item['transcode_video'] = child.attrib['videoDecision']
+        if child.tag == 'TranscodeSession' and 'audioDecision' in child.attrib.keys():
+          stream_item['transcode_audio'] = child.attrib['audioDecision']
+        if child.tag == 'TranscodeSession' and 'subtitleDecision' in child.attrib.keys():
+          stream_item['transcode_subtitle'] = child.attrib['subtitleDecision']
     streams.append(stream_item)
 
   shrunk_report = ''
@@ -111,103 +104,149 @@ def shrink_dict(in_dict):
   shrunk_report = ''
   for key in in_dict.keys():
     value = in_dict[key]
-    if current_length < MAX_RIGHT_BAR_LENGTH:
-      line += f'{key}: {value} '
-      current_length += len(line)
-    else:
-      shrunk_report += line + '\n'
-      line = f'{key}: {value} '
-      current_length = len(line)
+    line += f'{key}: {value} '
+    current_length = len(line)
+    if current_length > MAX_RIGHT_BAR_LENGTH:
+      line += '\n'
+      shrunk_report += line
+      line = ''
+      current_length = 0
+  if line:
+    shrunk_report += line + '\n'
   return shrunk_report
+
+def convert_bytes(in_bytes):
+  if type(in_bytes) is not int:
+    return 'Error: Can only convert integers.'
+
+  if in_bytes > 1000000000000:
+    out = str(in_bytes // 1000000000000) + 'T'
+  elif in_bytes > 1000000000:
+    out = str(in_bytes // 1000000000) + 'G'
+  elif in_bytes > 1000000:
+    out = str(in_bytes // 1000000) + 'M'
+  elif in_bytes >= 1000:
+    out = str(in_bytes // 1000) + 'K'
+  elif in_bytes < 1000:
+    out = str(in_bytes) + 'B'
+
+  return out
 
 # Classes
 class MenuApp(App):
   # Class Vars
-  BINDINGS = [("d", "toggle_dark", "Toggle dark mode"),
+  BINDINGS = [("a", "all_toggles", "All Toggles"),
+              ("c", "cpu_toggle", "CPU Toggle"),
+              ("d", "toggle_dark", "Dark Mode Toggle"),
               ("e", "edit_docker", "Edit docker-compose file"),
-              ("q", "quit", "Quit")]
+              ("f", "fs_toggle", "Filesystem Toggle"),
+              ("l", "lv_toggle", "LV Toggle"),
+              ("m", "memory_toggle", "Memory Toggle"),
+              ("n", "network_toggle", "Network Toggle"),
+              ("p", "pv_toggle", "PV Toggle"),
+              ("t", "transcode_toggle", "Transcode Toggle"),
+              ("q", "quit", "Quit"),
+              ("v", "vg_toggle", "VG Toggle"),
+              ("x", "plex_toggle", "Plex Toggle")]
   CSS_PATH = "grid.tcss"
 
   # Place our components on the grid and activate each one.
   def compose(self):
-    yield Button('Pull Container Images', id='pull_images')
+    yield Button('Pull\nContainer\nImages', id='pull_images')
     yield DataTable(id='dt1')
     yield Log('Storage Statistics Loading...', id='stats')
-    yield Button('Update and Stop Containers', id='update_and_stop')
-    yield Button('Update (Patch) OS', id='update_os')
+    yield Button('Update\nand Stop\nContainers', id='update_and_stop')
+    yield Button('Update/Patch\nOS', id='update_os')
     yield Log(id='log1')
-    yield Button('Update and Restart Containers', id='update_and_restart')
+    yield Button('Update and\nRestart\nContainers', id='update_and_restart')
     yield Header()
     yield Footer()
 
   # Once the app inits (one-time).
   def on_mount(self):
     self.title = APP_NAME
-    self.refresh_container_table()
     self.refresh_stats()
+    self.refresh_container_table()
     self.set_interval(5, self.refresh_container_table)
-    self.set_interval(2, self.refresh_stats)
+    self.set_interval(2, self.refresh_stats_launcher)
+
+  async def refresh_stats_launcher(self):
+    self.run_worker(self.refresh_stats(), exclusive=True, thread=True)
 
   # Refresh the stats and update the module.
-  def refresh_stats(self):
+  async def refresh_stats(self):
     # Connect to our stats log so we can update it.
     stats = self.query_one('#stats')
-    stats.clear()
-
-    # Get a set (forced-unique list) of disks.
-    disks = set()
-    for file in listdir('/dev'):
-      if file[0:2] == 'sd':
-        disks.add(file[0:3])
-
-    # Convert the set to a list and sort.
-    sorted_disks = list(disks)
-    sorted_disks.sort()
 
     # Build the report.
     report = ''
     # Storage
-    report += '---\n'
-    df = run('df -hl -x tmpfs', shell=True, capture_output=True)
-    stdout = df.stdout.decode()
-    report += stdout
-    report += '---\n'
-    vgs = run('sudo vgs', shell=True, capture_output=True)
-    stdout = vgs.stdout.decode()
-    if stdout:
-      report += stdout
+    if self.fs_toggle:
       report += '---\n'
-    pvs = run('sudo pvs', shell=True, capture_output=True)
-    stdout = pvs.stdout.decode()
-    if stdout:
+      df = run(FS_COMMAND, shell=True, capture_output=True)
+      stdout = df.stdout.decode()
       report += stdout
+    if self.vg_toggle:
       report += '---\n'
-#    Output needs cleaned, kinda stuck, dont care that much.
-#    lvs = run('sudo lvs', shell=True, capture_output=True)
-#    stdout = lvs.stdout.decode()
-#    if stdout:
-#      report += stdout
-#      report += '---\n'
+      vgs = run(VG_COMMAND, shell=True, capture_output=True)
+      stdout = vgs.stdout.decode()
+      if stdout:
+        report += stdout
+    if self.pv_toggle:
+      report += '---\n'
+      pvs = run(PV_COMMAND, shell=True, capture_output=True)
+      stdout = pvs.stdout.decode()
+      if stdout:
+        report += stdout
+    if self.lv_toggle:
+      report += '---\n'
+      lvs = run(LV_COMMAND, shell=True, capture_output=True)
+      stdout = lvs.stdout.decode()
+      if stdout:
+        report += stdout
     # CPU
-    report += 'CPU\n'
-    cpu_usage = cpu_times_percent()._asdict()
-    cpu_usage['count'] = cpu_count()
-    report += shrink_dict(cpu_usage)
-    report += '---\n'
+    if self.cpu_toggle:
+      report += '---\n'
+      report += 'CPU\n'
+      cpu_usage = cpu_times_percent()._asdict()
+      cpu_usage['count'] = cpu_count()
+      report += shrink_dict(cpu_usage)
     # Memory
-    report += 'Memory\n'
-    memory_usage = virtual_memory()._asdict()
-    report += shrink_dict(memory_usage)
-    report += '---\n'
+    if self.memory_toggle:
+      report += '---\n'
+      report += 'Memory\n'
+      memory_usage = virtual_memory()._asdict()
+      for key in memory_usage.keys():
+        if type(memory_usage[key]) is int:
+          memory_usage[key] = convert_bytes(memory_usage[key])
+      report += shrink_dict(memory_usage)
     # Network
-    report += 'Network\n'
-    network_usage = net_io_counters()._asdict()
-    report += shrink_dict(network_usage)
+    if self.network_toggle:
+      report += '---\n'
+      report += 'Network\n'
+      first_network_usage = net_io_counters()._asdict()
+      sleep(1)
+      second_network_usage = net_io_counters()._asdict()
+      diff_sent_bytes = second_network_usage['bytes_sent'] - first_network_usage['bytes_sent']
+      diff_recv_bytes = second_network_usage['bytes_recv'] - first_network_usage['bytes_recv']
+      diff_sent = convert_bytes(diff_sent_bytes)
+      diff_recv = convert_bytes(diff_recv_bytes)
+      second_network_usage['send_rate'] = diff_sent + '/s'
+      second_network_usage['recv_rate'] = diff_recv + '/s'
+      for key in second_network_usage.keys():
+        if key[0:3] != 'err' and key[0:4] != 'drop' and type(second_network_usage[key]) is int:
+          second_network_usage[key] = convert_bytes(second_network_usage[key])
+      report += shrink_dict(second_network_usage)
     # Plex
-    if PLEX_TOKEN:
-      report += refresh_plex()
+    if self.plex_toggle:
+      report += '---\n' + 'Plex\n'
+      if PLEX_TOKEN:
+        report += refresh_plex(self.transcode_toggle)
+      else:
+        report += 'Valid environment variable plex_token required.'
 
     # Update our stats log with our report content.
+    stats.clear()
     stats.write(report)
 
   # Our custom class function to refresh the container data table.
@@ -222,6 +261,18 @@ class MenuApp(App):
   def on_ready(self):
     log = self.query_one('#log1')
     log.write(f'Welcome to {APP_NAME}.\n')
+    stats = self.query_one('#stats')
+    stats.write('Loading.....')
+    self.vg_toggle        = True
+    self.pv_toggle        = True
+    self.lv_toggle        = True
+    self.cpu_toggle       = True
+    self.memory_toggle    = True
+    self.fs_toggle        = True
+    self.network_toggle   = True
+    self.plex_toggle      = True
+    self.transcode_toggle = True
+    self.all_toggles      = True
 
   # Launch the update_and_restart function when the button is pressed.
   @on(Button.Pressed, "#update_and_restart")
@@ -234,7 +285,7 @@ class MenuApp(App):
     self.sub_title = 'Job Running'
     log = self.query_one('#log1')
     chdir(DOCKER_COMPOSE_PATH)
-    bash_command_stack = 'docker-compose down 2>&1 && docker-compose pull 2>&1 && docker-compose up -d 2>&1 && docker image prune -f'
+    bash_command_stack = UPDATE_AND_RESTART_STACK
     process = Popen(bash_command_stack, shell=True, stderr=PIPE, stdout=PIPE)
     for line in process.stdout:
       log.write(line.decode())
@@ -253,7 +304,7 @@ class MenuApp(App):
     self.sub_title = 'Job Running'
     log = self.query_one('#log1')
     chdir(DOCKER_COMPOSE_PATH)
-    bash_command_stack = 'docker-compose down 2>&1 && docker-compose pull 2>&1'
+    bash_command_stack = UPDATE_AND_STOP_STACK
     process = Popen(bash_command_stack, shell=True, stderr=PIPE, stdout=PIPE)
     for line in process.stdout:
       log.write(line.decode())
@@ -271,7 +322,7 @@ class MenuApp(App):
   async def update_os(self):
     self.sub_title = 'Job Running'
     log = self.query_one('#log1')
-    bash_command_stack = 'sudo apt update 2>&1 && sudo apt upgrade -y 2>&1'
+    bash_command_stack = UPDATE_OS_STACK
     process = Popen(bash_command_stack, shell=True, stderr=PIPE, stdout=PIPE)
     for line in process.stdout:
       log.write(line.decode())
@@ -288,7 +339,7 @@ class MenuApp(App):
     self.sub_title = 'Job Running'
     log = self.query_one('#log1')
     chdir(DOCKER_COMPOSE_PATH)
-    bash_command_stack = 'docker-compose pull 2>&1'
+    bash_command_stack = IMAGE_PULL_STACK
     process = Popen(bash_command_stack, shell=True, stderr=PIPE, stdout=PIPE)
     for line in process.stdout:
       log.write(line.decode())
@@ -301,6 +352,44 @@ class MenuApp(App):
   def action_edit_docker(self):
     chdir(DOCKER_COMPOSE_PATH)
     run('vi docker-compose.yml', shell=True)
+
+  def action_vg_toggle(self):
+    self.vg_toggle = not self.vg_toggle
+
+  def action_pv_toggle(self):
+    self.pv_toggle = not self.pv_toggle
+
+  def action_lv_toggle(self):
+    self.lv_toggle = not self.lv_toggle
+
+  def action_cpu_toggle(self):
+    self.cpu_toggle = not self.cpu_toggle
+
+  def action_memory_toggle(self):
+    self.memory_toggle = not self.memory_toggle
+
+  def action_fs_toggle(self):
+    self.fs_toggle = not self.fs_toggle
+
+  def action_network_toggle(self):
+    self.network_toggle = not self.network_toggle
+
+  def action_plex_toggle(self):
+    self.plex_toggle = not self.plex_toggle
+
+  def action_transcode_toggle(self):
+    self.transcode_toggle = not self.transcode_toggle
+
+  def action_all_toggles(self):
+    self.all_toggles    = not self.all_toggles
+    self.vg_toggle      = self.all_toggles
+    self.pv_toggle      = self.all_toggles
+    self.lv_toggle      = self.all_toggles
+    self.cpu_toggle     = self.all_toggles
+    self.memory_toggle  = self.all_toggles
+    self.fs_toggle      = self.all_toggles
+    self.network_toggle = self.all_toggles
+    self.plex_toggle    = self.all_toggles
 
   def action_quit(self):
     exit(0)
