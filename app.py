@@ -189,8 +189,8 @@ class MenuApp(App):
 
   async def watch_smartmontools(self):
     log = self.query_one('#log1')
-    self.sub_title = 'Job Running'
-    bash_command_stack = 'sudo journalctl -u smartmontools'
+    self.sub_title = 'SmartMonTools Job Running'
+    bash_command_stack = 'sudo journalctl -u smartmontools 2>&1'
     process = Popen(bash_command_stack, shell=True, stderr=PIPE, stdout=PIPE)
     for line in process.stdout:
       log.write(line.decode())
