@@ -5,7 +5,7 @@ from time import sleep
 from subprocess import run, Popen, PIPE
 from xml.etree import ElementTree
 # end stdlib
-from requests import get
+from requests import get, ConnectionError
 from psutil import cpu_count, cpu_times_percent, virtual_memory, net_io_counters
 from textual import on
 from textual.app import App, ComposeResult
@@ -26,14 +26,23 @@ def docker_ps():
   container_list.append(header_tuple)
   containers = docker.containers.list()
   for con in containers:
-    con_tuple = (con.name, con.short_id, con.image.attrs['RepoTags'][0], con.attrs['Created'].split('.')[0], con.status, con.attrs['State']['StartedAt'].split('.')[0])
+    con_created = con.attrs['Created'].split('.')[0]
+    con_started = con.attrs['State']['StartedAt'].split('.')[0]
+    if len(con.image.attrs['RepoTags']) > 0:
+      con_image = con.image.attrs['RepoTags'][0]
+    else:
+      con_image = con.image.attrs['RepoTags']
+    con_tuple = (con.name, con.short_id, con_image, con_created, con.status, con_started)
     container_list.append(con_tuple)
   return container_list
 
 def refresh_plex(transcode_toggle):
   report = ''
   headers = {'X-Plex-Token': PLEX_TOKEN}
-  plex_sessions_xml = get(PLEX_API, headers=headers)
+  try:
+    plex_sessions_xml = get(PLEX_API, headers=headers)
+  except ConnectionError:
+    return 'Unable to connect to Plex API.'
   xml_tree = ElementTree.fromstring(plex_sessions_xml.text)
   streams = []
   for stream in xml_tree:
@@ -71,6 +80,8 @@ def refresh_plex(transcode_toggle):
         stream_item['platform_version'] = child.attrib['platformVersion']
       if child.tag == 'Player' and 'product' in child.attrib.keys():
         stream_item['product'] = child.attrib['product']
+      if child.tag == 'Player' and 'title' in child.attrib.keys():
+        stream_item['machine'] = child.attrib['title']
       if child.tag == 'Director' and 'tag' in child.attrib.keys():
         stream_item['director'] = child.attrib['tag']
       if transcode_toggle:
@@ -154,7 +165,7 @@ class MenuApp(App):
   def compose(self):
     yield Button('Pull\nContainer\nImages', id='pull_images')
     yield DataTable(id='dt1')
-    yield Log('Storage Statistics Loading...', id='stats')
+    yield Label('Loading...', id='stats')
     yield Button('Update\nand Stop\nContainers', id='update_and_stop')
     yield Button('Update/Patch\nOS', id='update_os')
     yield Log(id='log1')
@@ -246,8 +257,7 @@ class MenuApp(App):
         report += 'Valid environment variable plex_token required.'
 
     # Update our stats log with our report content.
-    stats.clear()
-    stats.write(report)
+    stats.update(report)
 
   # Our custom class function to refresh the container data table.
   def refresh_container_table(self):
@@ -261,8 +271,6 @@ class MenuApp(App):
   def on_ready(self):
     log = self.query_one('#log1')
     log.write(f'Welcome to {APP_NAME}.\n')
-    stats = self.query_one('#stats')
-    stats.write('Loading.....')
     self.vg_toggle        = True
     self.pv_toggle        = True
     self.lv_toggle        = True
