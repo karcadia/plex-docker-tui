@@ -1,5 +1,5 @@
 # Imports
-from os import chdir, listdir
+from os import chdir
 from sys import stdout
 from time import sleep
 from subprocess import run, Popen, PIPE
@@ -8,8 +8,7 @@ from xml.etree import ElementTree
 from requests import get, ConnectionError
 from psutil import cpu_count, cpu_times_percent, virtual_memory, net_io_counters
 from textual import on
-from textual.app import App, ComposeResult
-from textual.containers import ScrollableContainer
+from textual.app import App
 from textual.widgets import Button, Header, Footer, DataTable, Log, Static, Label
 from docker import from_env
 
@@ -180,9 +179,21 @@ class MenuApp(App):
     self.refresh_container_table()
     self.set_interval(5, self.refresh_container_table)
     self.set_interval(2, self.refresh_stats_launcher)
+    self.start_watching_logs()
 
   async def refresh_stats_launcher(self):
     self.run_worker(self.refresh_stats(), exclusive=True, thread=True)
+
+  async def start_watching_logs(self):
+    self.run_worker(self.watch_smartmontools(), exclusive=True, thread=True)
+
+  async def watch_smartmontools(self):
+    log = self.query_one('#log1')
+    self.sub_title = 'Job Running'
+    bash_command_stack = 'sudo journalctl -u smartmontools'
+    process = Popen(bash_command_stack, shell=True, stderr=PIPE, stdout=PIPE)
+    for line in process.stdout:
+      log.write(line.decode())
 
   # Refresh the stats and update the module.
   async def refresh_stats(self):
