@@ -374,6 +374,7 @@ class MenuApp(App):
   def action_edit_docker(self):
     chdir(DOCKER_COMPOSE_PATH)
     run('vi docker-compose.yml', shell=True)
+#    self.action_quit()
 
   def action_vg_toggle(self):
     self.vg_toggle = not self.vg_toggle
