@@ -6,7 +6,7 @@ from subprocess import run, Popen, PIPE
 from xml.etree import ElementTree
 # end stdlib
 from requests import get, ConnectionError
-from psutil import cpu_count, cpu_times_percent, virtual_memory, net_io_counters
+from psutil import cpu_count, cpu_times_percent, virtual_memory, net_io_counters, Process
 from textual import on
 from textual.app import App
 from textual.widgets import Button, Header, Footer, DataTable, Log, Static, Label
@@ -30,7 +30,7 @@ def docker_ps():
     if len(con.image.attrs['RepoTags']) > 0:
       con_image = con.image.attrs['RepoTags'][0]
     else:
-      con_image = con.image.attrs['RepoTags']
+      con_image = 'Restart to see new image.'
     con_tuple = (con.name, con.short_id, con_image, con_created, con.status, con_started)
     container_list.append(con_tuple)
   return container_list
@@ -63,6 +63,11 @@ def refresh_plex(transcode_toggle):
     for child in stream:
       if child.tag == 'User' and 'title' in child.attrib.keys():
         stream_item['user'] = child.attrib['title']
+      if child.tag == 'Media' and 'videoResolution' in child.attrib.keys():
+        stream_item['video_resolution'] = child.attrib['videoResolution']
+      for grandchild in child:
+        if grandchild.tag == 'Part' and 'decision' in grandchild.attrib.keys():
+          stream_item['transcode_decision'] = grandchild.attrib['decision']
       if child.tag == 'Session' and 'location' in child.attrib.keys():
         stream_item['location'] = child.attrib['location']
       if child.tag == 'Session' and 'bandwidth' in child.attrib.keys():
@@ -179,20 +184,17 @@ class MenuApp(App):
     self.refresh_container_table()
     self.set_interval(5, self.refresh_container_table)
     self.set_interval(2, self.refresh_stats_launcher)
-    self.start_watching_logs()
 
   async def refresh_stats_launcher(self):
     self.run_worker(self.refresh_stats(), exclusive=True, thread=True)
 
-  async def start_watching_logs(self):
-    self.run_worker(self.watch_smartmontools(), exclusive=True, thread=True)
-
   async def watch_smartmontools(self):
     log = self.query_one('#log1')
+    log.write('Starting smartmontools watcher...\n')
     self.sub_title = 'SmartMonTools Job Running'
-    bash_command_stack = 'sudo journalctl -u smartmontools 2>&1'
-    process = Popen(bash_command_stack, shell=True, stderr=PIPE, stdout=PIPE)
-    for line in process.stdout:
+    bash_command_stack = JOURNALCTL_SMARTMONTOOLS_CMD
+    self.smartmon_process = Popen(bash_command_stack, shell=True, stderr=PIPE, stdout=PIPE)
+    for line in self.smartmon_process.stdout:
       log.write(line.decode())
 
   # Refresh the stats and update the module.
@@ -292,6 +294,7 @@ class MenuApp(App):
     self.plex_toggle      = True
     self.transcode_toggle = True
     self.all_toggles      = True
+    self.run_worker(self.watch_smartmontools(), exclusive=True, thread=True)
 
   # Launch the update_and_restart function when the button is pressed.
   @on(Button.Pressed, "#update_and_restart")
@@ -411,6 +414,14 @@ class MenuApp(App):
     self.plex_toggle    = self.all_toggles
 
   def action_quit(self):
+    if hasattr(self, 'smartmon_process') and hasattr(self.smartmon_process, 'pid'):
+      parent = Process(self.smartmon_process.pid)
+      for child in parent.children(recursive=True):
+        try:
+          child.terminate()
+        except:
+          pass
+      parent.kill()
     exit(0)
 
 # Main
