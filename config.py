@@ -11,8 +11,12 @@ IMAGE_PULL_STACK             = 'docker-compose pull 2>&1'
 UPDATE_AND_RESTART_STACK     = 'docker-compose down 2>&1 && docker-compose pull 2>&1 && docker-compose up -d 2>&1 && docker image prune -f'
 UPDATE_AND_STOP_STACK        = 'docker-compose down 2>&1 && docker-compose pull 2>&1'
 UPDATE_OS_STACK              = 'sudo apt update 2>&1 && sudo apt upgrade -y 2>&1 && sudo apt autoremove -y 2>&1'
-JOURNALCTL_SMARTMONTOOLS_CMD = 'sudo journalctl -fu smartmontools 2>&1'
 FS_COMMAND                   = 'df -hl -x tmpfs'
 LV_COMMAND                   = 'sudo lvs -o lv_name,vg_name,attr,lvsize'
 VG_COMMAND                   = 'sudo vgs'
 PV_COMMAND                   = 'sudo pvs'
+
+# Arch
+JOURNALCTL_SMARTMONTOOLS_CMD = 'sudo journalctl -fu smartd 2>&1'
+# Debian
+#JOURNALCTL_SMARTMONTOOLS_CMD = 'sudo journalctl -fu smartmontools 2>&1'

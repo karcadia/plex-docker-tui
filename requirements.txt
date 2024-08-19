@@ -1,2 +1,4 @@
+requests
 textual
 psutil
+docker

@@ -101,6 +101,14 @@ def refresh_plex(transcode_toggle):
           stream_item['transcode_audio'] = child.attrib['audioDecision']
         if child.tag == 'TranscodeSession' and 'subtitleDecision' in child.attrib.keys():
           stream_item['transcode_subtitle'] = child.attrib['subtitleDecision']
+        if child.tag == 'TranscodeSession' and 'transcodeHwRequested' in child.attrib.keys():
+          stream_item['gpu_transcode'] = child.attrib['transcodeHwRequested']
+        if child.tag == 'TranscodeSession' and 'transcodeHwEncodingTitle' in child.attrib.keys():
+          stream_item['gpu_encoder'] = child.attrib['transcodeHwEncodingTitle']
+        if child.tag == 'TranscodeSession' and 'minOffsetAvailable' in child.attrib.keys():
+          stream_item['transcode_min_offset'] = float(child.attrib['minOffsetAvailable']) // 1
+        if child.tag == 'TranscodeSession' and 'maxOffsetAvailable' in child.attrib.keys():
+          stream_item['transcode_max_offset'] = float(child.attrib['maxOffsetAvailable']) // 1
     streams.append(stream_item)
 
   shrunk_report = ''
